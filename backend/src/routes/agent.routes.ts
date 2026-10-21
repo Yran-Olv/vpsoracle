@@ -46,7 +46,8 @@ router.post('/report', (req, res) => {
 // Dynamic Agent Installation Script for Linux (Ubuntu/Debian/CentOS/Alpine/Oracle Linux)
 router.get('/install.sh', (req, res) => {
   const token = String(req.query.token || '');
-  const host = `${req.protocol}://${req.get('host')}`;
+  const proto = (req.headers['x-forwarded-proto'] as string) || (req.get('host')?.includes('localhost') ? 'http' : 'https');
+  const host = `${proto}://${req.get('host')}`;
 
   res.setHeader('Content-Type', 'text/x-shellscript');
   res.send(`#!/bin/bash

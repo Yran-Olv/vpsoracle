@@ -12,6 +12,8 @@ import { authMiddleware } from './middleware/auth.middleware';
 
 const app = express();
 
+app.set('trust proxy', true);
+
 // Security Middlewares
 app.use(helmet({
   contentSecurityPolicy: false,
