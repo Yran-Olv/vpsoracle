@@ -98,10 +98,23 @@ export class DockerService {
         const version = imageParts.length > 1 ? imageParts[imageParts.length - 1] : 'latest';
 
         const state = c.State ? c.State.toLowerCase() : 'stopped';
-        const isRunning = state === 'running';
-
-        if (isRunning) runningCount++;
-        else stoppedCount++;
+        let status: 'running' | 'stopped' | 'restarting' | 'paused' | 'dead' = 'stopped';
+        if (state === 'running') {
+          status = 'running';
+          runningCount++;
+        } else if (state === 'restarting') {
+          status = 'restarting';
+          stoppedCount++;
+        } else if (state === 'paused') {
+          status = 'paused';
+          stoppedCount++;
+        } else if (state === 'dead') {
+          status = 'dead';
+          stoppedCount++;
+        } else {
+          status = 'stopped';
+          stoppedCount++;
+        }
 
         // Health detection
         let health: 'healthy' | 'unhealthy' | 'starting' | 'none' = 'none';
@@ -133,7 +146,7 @@ export class DockerService {
         const containerStat = statsList.find((s: any) => s.id.startsWith(id) || id.startsWith(s.id));
         const cpuPercent = containerStat ? Math.round((containerStat.cpuPercent || 0) * 10) / 10 : 0;
         const memUsage = containerStat ? containerStat.memUsage || 0 : 0;
-        const memLimit = containerStat ? containerStat.memLimit || (24 * 1024 * 1024 * 1024) : (24 * 1024 * 1024 * 1024);
+        const memLimit = containerStat ? containerStat.memLimit || (12 * 1024 * 1024 * 1024) : (12 * 1024 * 1024 * 1024);
         const memPercent = containerStat ? Math.round((containerStat.memPercent || 0) * 10) / 10 : 0;
         const netRx = containerStat ? (containerStat.netIO as any)?.rx || 0 : 0;
         const netTx = containerStat ? (containerStat.netIO as any)?.wx || (containerStat.netIO as any)?.tx || 0 : 0;
@@ -143,7 +156,7 @@ export class DockerService {
           name,
           image,
           version,
-          status: isRunning ? 'running' : 'stopped',
+          status,
           stateString: c.Status || state,
           health,
           cpuPercent,
@@ -152,7 +165,7 @@ export class DockerService {
           memoryPercent: memPercent,
           networkRxBytes: netRx,
           networkTxBytes: netTx,
-          restartCount: 0,
+          restartCount: typeof c.RestartCount === 'number' ? c.RestartCount : 0,
           uptime: c.Status || '',
           ports,
           mounts
@@ -185,10 +198,16 @@ export class DockerService {
       return 'Docker daemon indisponível.';
     }
 
+    if (!containerId || !/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) {
+      return 'ID de container inválido.';
+    }
+
+    const safeLines = Math.min(500, Math.max(10, parseInt(String(lines), 10) || 100));
+
     return new Promise((resolve) => {
       const options = {
         socketPath: this.socketPath,
-        path: `/containers/${containerId}/logs?stdout=1&stderr=1&tail=${lines}&timestamps=1`,
+        path: `/containers/${encodeURIComponent(containerId)}/logs?stdout=1&stderr=1&tail=${safeLines}&timestamps=1`,
         method: 'GET',
         headers: { 'Host': 'docker' }
       };
@@ -229,8 +248,9 @@ export class DockerService {
 
   static async inspectContainer(containerId: string): Promise<any> {
     if (!this.isDockerAvailable()) return null;
+    if (!containerId || !/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return null;
     try {
-      const data = await this.getDockerSocket(`/containers/${containerId}/json`);
+      const data = await this.getDockerSocket(`/containers/${encodeURIComponent(containerId)}/json`);
       return data;
     } catch (err) {
       return null;

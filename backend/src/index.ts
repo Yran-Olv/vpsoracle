@@ -8,6 +8,7 @@ import { apiLimiter } from './middleware/rateLimit.middleware';
 import apiRouter from './routes';
 import { startBackgroundJobs } from './jobs';
 import { MetricsService } from './services/metrics.service';
+import { authMiddleware } from './middleware/auth.middleware';
 
 const app = express();
 
@@ -32,8 +33,8 @@ app.use('/api', apiLimiter);
 // Mount API routes
 app.use('/api', apiRouter);
 
-// Server-Sent Events (SSE) for Realtime Dashboard Streaming
-app.get('/events', async (req, res) => {
+// Server-Sent Events (SSE) for Realtime Dashboard Streaming (Protected with JWT)
+app.get('/events', authMiddleware, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -76,6 +77,19 @@ app.get('*', (req, res, next) => {
 // Initialize database & Start Server
 initDatabase();
 
+if (config.env === 'production') {
+  const weakSecrets = [
+    'vps-multivus-oracle-2026-safe-token-multivus-secret',
+    'vps-multivus-secret-key-oracle-2026-safe-token',
+    'secret',
+    'admin',
+    '123456'
+  ];
+  if (!config.jwtSecret || config.jwtSecret.length < 20 || weakSecrets.includes(config.jwtSecret)) {
+    console.warn('⚠️ [AVISO DE SEGURANÇA]: O JWT_SECRET configurado é padrão ou possui baixa entropia. Recomenda-se gerar um JWT_SECRET exclusivo e seguro no arquivo .env.');
+  }
+}
+
 if (process.env.NODE_ENV !== 'test') {
   startBackgroundJobs();
   app.listen(config.port, '0.0.0.0', () => {
@@ -84,6 +98,7 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`📍 Port: ${config.port}`);
     console.log(`🌐 Target: http://localhost:${config.port}`);
     console.log(`🔒 Timezone: ${config.timezone}`);
+    console.log(`🛡️ SSE /events: Autenticado com JWT via Bearer/Query Token`);
     console.log(`==================================================`);
   });
 }

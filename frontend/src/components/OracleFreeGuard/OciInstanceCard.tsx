@@ -56,12 +56,18 @@ export const OciInstanceCard: React.FC<OciInstanceCardProps> = ({ instance, isLo
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                 {instance.state}
               </span>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border flex items-center gap-1 ${instance.isFromLiveImds ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${instance.isFromLiveImds ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                {instance.isFromLiveImds ? 'IMDSv2 Online' : (instance.imdsStatus === 'STALE' ? 'IMDSv2 Cache' : 'Telemetria')}
+              </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
                 {instance.shape}
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Dados reais coletados via Oracle Instance Metadata Service (IMDS v2)
+              {instance.isFromLiveImds 
+                ? 'Dados em tempo real via Oracle Instance Metadata Service (IMDS v2)' 
+                : `Telemetria preservada da última leitura válida (${instance.lastValidFetchAt && instance.lastValidFetchAt !== 'Desconhecido' ? new Date(instance.lastValidFetchAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Local'})`}
             </p>
           </div>
         </div>

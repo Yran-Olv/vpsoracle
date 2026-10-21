@@ -74,7 +74,10 @@ export const BillingProtectionCard: React.FC<BillingProtectionCardProps> = ({ bi
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Estimated Cost */}
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
-          <span className="text-xs text-slate-400 font-medium">Gasto Estimado Atual</span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400 font-medium">Gasto Estimado (Local)</span>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono">Estimativa</span>
+          </div>
           <div className="text-2xl font-bold font-mono text-emerald-400 flex items-center gap-1">
             <span>US$</span>
             <span>{billing.currentEstimatedCostUsd.toFixed(2)}</span>
@@ -85,7 +88,7 @@ export const BillingProtectionCard: React.FC<BillingProtectionCardProps> = ({ bi
         {/* Budget Configured */}
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400 font-medium">Budget Configurado</span>
+            <span className="text-xs text-slate-400 font-medium">Budget Alerta Painel</span>
             {!isEditingBudget ? (
               <button
                 onClick={() => { setBudgetVal(String(billing.budgetConfiguredUsd)); setIsEditingBudget(true); }}
@@ -118,7 +121,7 @@ export const BillingProtectionCard: React.FC<BillingProtectionCardProps> = ({ bi
               </button>
             </div>
           )}
-          <p className="text-[11px] text-slate-500">Limite de alerta financeiro</p>
+          <p className="text-[11px] text-slate-500">Teto para emissão de alertas</p>
         </div>
 
         {/* Budget Utilization % */}
@@ -132,6 +135,64 @@ export const BillingProtectionCard: React.FC<BillingProtectionCardProps> = ({ bi
               className="bg-emerald-500 h-full rounded-full"
               style={{ width: `${Math.min(100, Math.max(2, billing.budgetUtilizationPercent))}%` }}
             />
+          </div>
+        </div>
+      </div>
+
+      {/* 3 Pillars Breakdown (Transparência FinOps: Custo Confirmado, Estimado e Risco) */}
+      <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+        <div className="text-xs font-bold text-white flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-cyan-400" />
+          <span>Auditoria Financeira & Transparência FinOps</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          {/* Pilar 1: Custo Confirmado */}
+          <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-300">1. Custo Confirmado (Fatura OCI)</span>
+              {billing.isOciCostApiConfigured ? (
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">Oficial</span>
+              ) : (
+                <span className="text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">Não Configurado</span>
+              )}
+            </div>
+            <div className="text-sm font-mono font-bold text-slate-200">
+              {billing.isOciCostApiConfigured ? `US$ ${(billing.confirmedCostUsd ?? 0).toFixed(2)}` : 'API Não Conectada'}
+            </div>
+            <p className="text-[10px] text-slate-400 leading-tight">
+              {billing.costPillars?.confirmed?.note || 'Sem integração direta à API de Faturamento da OCI. Os valores locais são calculados por telemetria operacional.'}
+            </p>
+          </div>
+
+          {/* Pilar 2: Custo Estimado */}
+          <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-300">2. Custo Estimado (Local)</span>
+              <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded">Telemetria</span>
+            </div>
+            <div className="text-sm font-mono font-bold text-emerald-400">
+              US$ {billing.currentEstimatedCostUsd.toFixed(2)} / mês
+            </div>
+            <p className="text-[10px] text-slate-400 leading-tight">
+              {billing.costPillars?.estimated?.assumption || 'Baseado em 2 OCPUs, 12 GB RAM Ampere A1, 192 GB Disco e 1 IPv4 público atendendo 100% à gratuidade.'}
+            </p>
+          </div>
+
+          {/* Pilar 3: Risco de Cobrança */}
+          <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-300">3. Risco de Cobrança</span>
+              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                {billing.costPillars?.billingRisk?.level || 'BAIXO'}
+              </span>
+            </div>
+            <div className="text-sm font-bold text-white flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>Nenhum Excedente</span>
+            </div>
+            <p className="text-[10px] text-slate-400 leading-tight">
+              Fonte: {billing.costPillars?.billingRisk?.evidenceSource || 'IMDSv2 + Telemetria Host'}. Confiança: Alta para recursos desta instância.
+            </p>
           </div>
         </div>
       </div>

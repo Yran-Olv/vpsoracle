@@ -41,12 +41,13 @@ ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no "${VPS_USER}@${VPS_HOST}" "mkdir
 rsync -avz -e "ssh -i \"${SSH_KEY}\" -o StrictHostKeyChecking=no" \
   --exclude 'node_modules' \
   --exclude '.git' \
+  --exclude 'vpsoracle' \
   --exclude 'dist' \
   --exclude '*.log' \
   ./ "${VPS_USER}@${VPS_HOST}:${REMOTE_DIR}/"
 
-# 3. Execute Remote Build and Start
-echo -e "${YELLOW}3. Executando build dos containers Docker na VPS...${NC}"
+# 3. Execute Remote Zero-Downtime Build and Healthcheck
+echo -e "${YELLOW}3. Executando build e deploy com Zero-Downtime na VPS...${NC}"
 ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no "${VPS_USER}@${VPS_HOST}" << 'EOF'
 set -e
 cd /home/ubuntu/vps-multivus
@@ -55,17 +56,39 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
-# Build and start containers
-sudo docker compose down || true
-sudo docker compose build --no-cache
-sudo docker compose up -d
+# 1. Backup do banco SQLite antes de atualizar
+mkdir -p /home/ubuntu/vps-multivus/backups
+if sudo docker ps --filter "name=vps-multivus-backend" -q | grep -q .; then
+  echo "Gerando snapshot de backup do SQLite..."
+  sudo docker exec vps-multivus-backend node -e "const fs = require('fs'); if (fs.existsSync('/app/data/vps_multivus.db')) fs.copyFileSync('/app/data/vps_multivus.db', '/app/data/backup_pre_deploy.db');" 2>/dev/null || true
+fi
 
-# Configure Nginx
+# 2. Build das imagens enquanto os containers antigos continuam atendendo tráfego (Zero Downtime)
+echo "Construindo imagens Docker em segundo plano..."
+sudo docker compose build
+
+# 3. Atualização rápida dos containers (recriação pontual)
+echo "Aplicando novos containers..."
+sudo docker compose up -d --remove-orphans
+
+# 4. Validação de Saúde (Healthcheck local pós-deploy)
+echo "Verificando integridade da API..."
+sleep 4
+for i in {1..10}; do
+  if curl -sf http://127.0.0.1:3050/api/health > /dev/null; then
+    echo "✅ Backend respondeu com sucesso ao Healthcheck!"
+    break
+  fi
+  echo "Aguardando backend inicializar ($i/10)..."
+  sleep 2
+done
+
+# 5. Configure Nginx
 echo "Configurando Nginx para vps.multivus.com.br..."
 sudo cp nginx/vps.multivus.com.br.conf /etc/nginx/sites-available/vps.multivus.com.br
 sudo ln -sf /etc/nginx/sites-available/vps.multivus.com.br /etc/nginx/sites-enabled/vps.multivus.com.br
 
-# Check SSL certificate
+# 6. Check SSL certificate
 if [ ! -d "/etc/letsencrypt/live/vps.multivus.com.br" ]; then
   echo "Obtendo certificado SSL Let's Encrypt via Certbot..."
   sudo certbot --nginx -d vps.multivus.com.br --non-interactive --agree-tos --email admin@multivus.com.br --redirect || {

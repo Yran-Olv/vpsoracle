@@ -11,9 +11,9 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3050
-      - JWT_SECRET=${JWT_SECRET:-vps-multivus-oracle-2026-safe-token-multivus-secret}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET deve ser obrigatoriamente definido no arquivo .env}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Systemzap@2025}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD deve ser obrigatoriamente definido no arquivo .env}
       - TIMEZONE=America/Sao_Paulo
       - METRICS_INTERVAL_SEC=10
       - HEALTHCHECK_INTERVAL_SEC=30

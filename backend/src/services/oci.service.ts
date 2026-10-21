@@ -39,6 +39,8 @@ export interface OciInstanceMetadata {
     availableRamGb: number;
   };
   isFromLiveImds: boolean;
+  imdsStatus: 'ONLINE' | 'STALE' | 'OFFLINE';
+  lastValidFetchAt: string;
   fetchedAt: string;
 }
 
@@ -76,6 +78,7 @@ export class OciService {
       const ocpus = Number(inst.shapeConfig?.ocpus) || 2;
       const memoryInGBs = Number(inst.shapeConfig?.memoryInGBs) || 12;
       const timeCreated = Number(inst.timeCreated) || 1788952903101;
+      const nowIso = new Date().toISOString();
 
       const metadata: OciInstanceMetadata = {
         displayName: inst.displayName || 'multivusvps',
@@ -119,15 +122,39 @@ export class OciService {
           availableRamGb: Math.max(0, 12 - memoryInGBs)
         },
         isFromLiveImds: true,
-        fetchedAt: new Date().toISOString()
+        imdsStatus: 'ONLINE',
+        lastValidFetchAt: nowIso,
+        fetchedAt: nowIso
       };
+
+      // Persist latest verified reading into sqlite database
+      try {
+        db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('oci_live_metadata', ?, CURRENT_TIMESTAMP)").run(
+          JSON.stringify(metadata)
+        );
+      } catch (e) {}
 
       cachedMetadata = metadata;
       lastFetchTime = now;
       return metadata;
     } catch (err) {
-      // Fallback to verified baseline data from user's OCI instance
+      // 1. Try to recover last successful reading from SQLite persistence
+      try {
+        const saved = (db.prepare("SELECT value FROM system_settings WHERE key = 'oci_live_metadata'").get() as any)?.value;
+        if (saved) {
+          const parsed = JSON.parse(saved) as OciInstanceMetadata;
+          parsed.isFromLiveImds = false;
+          parsed.imdsStatus = 'STALE';
+          parsed.fetchedAt = new Date().toISOString();
+          cachedMetadata = parsed;
+          lastFetchTime = now;
+          return parsed;
+        }
+      } catch (e) {}
+
+      // 2. If no historical valid reading exists, return baseline with OFFLINE status
       const fallbackTimeCreated = 1788952903101;
+      const nowIso = new Date().toISOString();
       const fallback: OciInstanceMetadata = {
         displayName: 'multivusvps',
         id: 'ocid1.instance.oc1.sa-saopaulo-1.antxeljrtu5uzvycixdeslguvkhgz7tradcgwxyregxaa4eyy4tghaxrcgeq',
@@ -170,7 +197,9 @@ export class OciService {
           availableRamGb: 0
         },
         isFromLiveImds: false,
-        fetchedAt: new Date().toISOString()
+        imdsStatus: 'OFFLINE',
+        lastValidFetchAt: 'Desconhecido',
+        fetchedAt: nowIso
       };
 
       cachedMetadata = fallback;

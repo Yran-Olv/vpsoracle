@@ -210,6 +210,8 @@ export interface OciInstanceMetadata {
     availableRamGb: number;
   };
   isFromLiveImds: boolean;
+  imdsStatus?: 'ONLINE' | 'STALE' | 'OFFLINE';
+  lastValidFetchAt?: string;
   fetchedAt: string;
 }
 
@@ -287,6 +289,27 @@ export interface BillingProtectionReport {
   alertTier: '0%' | '25%' | '50%' | '75%' | '90%' | '100%';
   alertTierColor: 'green' | 'yellow' | 'orange' | 'red';
   disclaimer: string;
+  isOciCostApiConfigured?: boolean;
+  confirmedCostUsd?: number | null;
+  costPillars?: {
+    confirmed: {
+      amount: number | null;
+      statusText: string;
+      isAvailable: boolean;
+      note: string;
+    };
+    estimated: {
+      amount: number;
+      period: string;
+      assumption: string;
+    };
+    billingRisk: {
+      level: 'BAIXO' | 'MÉDIO' | 'ALTO';
+      confidence: 'ALTA' | 'MÉDIA' | 'BAIXA';
+      evidenceSource: string;
+      details: string;
+    };
+  };
   potentiallyChargeableResources: Array<{
     name: string;
     description: string;

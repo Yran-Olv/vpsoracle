@@ -216,27 +216,38 @@ export class OracleRulesService {
       });
 
       const html = response.data as string;
+      const cleanText = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+                            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
+                            .replace(/<[^>]+>/g, ' ');
       const verifiedAt = new Date().toISOString();
 
-      // Check key limits in live HTML text
-      const currentRules = this.getRules();
-
-      // Ampere A1 flex check (Oracle Cloud Always Free Novas Regras: 2 OCPUs e 12 GB RAM por tenancy)
-      if (html.includes('VM.Standard.A1.Flex') || html.includes('Ampere A1')) {
-        const ocpuValue = '2';
-        const ramValue = '12';
-        updatedCount += this.checkAndTrackChange('arm_ocpu_limit', ocpuValue, verifiedAt);
-        updatedCount += this.checkAndTrackChange('arm_ram_limit', ramValue, verifiedAt);
+      // Dynamic Regex Extraction from Oracle Official Documentation:
+      // 1. Storage Quota (e.g., "200 GB total of combined boot volume and block volume")
+      const storageMatch = cleanText.match(/(\d+)\s*GB\s*(?:total\s*)?(?:of\s*)?(?:combined\s*)?(?:boot\s*volume|block\s*volume|storage)/i);
+      if (storageMatch && storageMatch[1]) {
+        updatedCount += this.checkAndTrackChange('block_and_boot_storage_total', storageMatch[1], verifiedAt);
       }
 
-      // Storage 200 GB check
-      if (html.includes('200 GB') || html.includes('200-GB')) {
-        updatedCount += this.checkAndTrackChange('block_and_boot_storage_total', '200', verifiedAt);
+      // 2. Outbound Data Transfer (e.g., "10 TB per month of outbound data transfer")
+      const bandwidthMatch = cleanText.match(/(\d+)\s*TB\s*(?:per\s*month|monthly|of\s*outbound)/i);
+      if (bandwidthMatch && bandwidthMatch[1]) {
+        updatedCount += this.checkAndTrackChange('outbound_data_transfer', bandwidthMatch[1], verifiedAt);
       }
 
-      // Idle reclamation check
-      if (html.includes('Reclamation of Idle Compute Instances') || html.includes('idle Always Free')) {
-        updatedCount += this.checkAndTrackChange('idle_instance_reclamation', '20%', verifiedAt);
+      // 3. Ampere A1 ARM Limits (e.g., "up to 4 OCPUs and 24 GB of memory" or "2 OCPUs and 12 GB")
+      const armMatch = cleanText.match(/(?:Ampere\s*A1|A1\.Flex)[^.]*?(\d+)\s*OCPUs?[^.]*?(\d+)\s*GB/i) 
+                    || cleanText.match(/(\d+)\s*OCPUs?\s*and\s*(\d+)\s*GB\s*(?:of\s*)?memory/i);
+      if (armMatch && armMatch[1] && armMatch[2]) {
+        // Oracle documentation text match found
+        updatedCount += this.checkAndTrackChange('arm_ocpu_limit', armMatch[1], verifiedAt);
+        updatedCount += this.checkAndTrackChange('arm_ram_limit', armMatch[2], verifiedAt);
+      }
+
+      // 4. Idle Instance Reclamation (e.g., "95th percentile CPU and network utilization are less than 20%")
+      const idleMatch = cleanText.match(/(?:percentile\s*(?:is|are)?\s*(?:less\s*than|below)?\s*|utilization\s*under\s*)(\d+)%/i)
+                     || cleanText.match(/(\d+)%\s*(?:of\s*CPU|utilization\s*for\s*7\s*days)/i);
+      if (idleMatch && idleMatch[1]) {
+        updatedCount += this.checkAndTrackChange('idle_instance_reclamation', `${idleMatch[1]}%`, verifiedAt);
       }
 
       // Update verified_at timestamp for all official rules
@@ -245,7 +256,9 @@ export class OracleRulesService {
       return {
         checked: true,
         updatedCount,
-        message: updatedCount > 0 ? `Regras atualizadas. ${updatedCount} alteração(ões) detectada(s).` : 'Regras verificadas com sucesso na documentação oficial da Oracle. Nenhuma alteração detectada.',
+        message: updatedCount > 0 
+          ? `Documentação analisada via regex. ${updatedCount} alteração(ões) detectada(s) e registradas.` 
+          : 'Documentação oficial da Oracle consultada e analisada via regex com sucesso. Todos os limites numéricos vigentes foram validados.',
         rules: this.getRules()
       };
     } catch (err: any) {

@@ -130,29 +130,33 @@ export class CheckupService {
       });
     }
 
-    // 3. Storage Total vs 200 GB Free Tier
+    // 3. Storage Total vs 200 GB Free Tier (Tenancy Storage Quota)
     const storageItem = guard.resources.find(r => r.id === 'storage');
-    const storageGb = storageItem ? storageItem.currentUsage : 12;
-    if (storageGb >= 185) {
+    const storageGb = storageItem ? storageItem.currentUsage : 192.7;
+    const diskUsagePercent = metrics.disk.usagePercent;
+
+    if (storageGb > 200) {
+      const overage = Math.round((storageGb - 200) * 10) / 10;
       checks.push({
         id: 'storage_check',
         name: 'Armazenamento Total Always Free',
         category: 'storage',
         status: 'critical',
         statusBadge: '🔴 Crítico',
-        value: `${storageGb} GB / 200 GB`,
-        details: 'Armazenamento a mais de 92% da cota gratuita da Oracle Cloud.',
-        recommendation: 'Remova volumes e dados desnecessários para evitar cobrança extra.'
+        value: `${storageGb} GB / 200 GB (Excedente: +${overage} GB)`,
+        details: 'O armazenamento provisionado excede a franquia gratuita de 200 GB da Oracle Cloud e gerará cobrança financeira.',
+        recommendation: 'Reduza o tamanho dos volumes para até 200 GB para retornar à gratuidade.'
       });
-    } else if (storageGb >= 160) {
+    } else if (diskUsagePercent >= 90) {
       checks.push({
         id: 'storage_check',
         name: 'Armazenamento Total Always Free',
         category: 'storage',
         status: 'warning',
         statusBadge: '🟡 Atenção',
-        value: `${storageGb} GB / 200 GB`,
-        details: 'Armazenamento ocupando mais de 80% do limite.'
+        value: `${storageGb} GB Provisionados (${diskUsagePercent}% em uso no SO)`,
+        details: 'A partição local está com mais de 90% de ocupação no sistema de arquivos.',
+        recommendation: 'Limpe logs ou containers Docker não utilizados.'
       });
     } else {
       checks.push({
@@ -161,8 +165,8 @@ export class CheckupService {
         category: 'storage',
         status: 'ok',
         statusBadge: '🟢 OK',
-        value: `${storageGb} GB em uso (Limite: 200 GB)`,
-        details: 'Ampla margem restante dentro do Oracle Always Free.'
+        value: `${storageGb} GB Provisionados de 200 GB (${Math.round((metrics.disk.usedBytes / (1024 * 1024 * 1024)) * 10) / 10} GB ocupados no SO)`,
+        details: 'Volume provisionado 100% dentro da franquia gratuita da Oracle Cloud com ampla margem no sistema de arquivos.'
       });
     }
 
@@ -225,41 +229,74 @@ export class CheckupService {
       details: nginxRunning ? 'Servidor web gerenciando proxies reversos e terminação SSL.' : 'Nginx está fora do ar.'
     });
 
-    // 8. PostgreSQL / Database Engine
+    // 8. Database Health (SQLite Integrity & SQL Services)
+    let sqliteOk = true;
+    try {
+      const integrity = db.pragma('integrity_check') as any[];
+      if (!Array.isArray(integrity) || integrity.length === 0 || integrity[0].integrity_check !== 'ok') {
+        sqliteOk = false;
+      }
+    } catch (e) {
+      sqliteOk = false;
+    }
+
     const pgSvc = services.find(s => s.name === 'postgresql');
     const pgRunning = pgSvc && pgSvc.status === 'running';
+    const mysqlContainer = docker.containers.find(c => c.name.toLowerCase().includes('mysql') || c.image.toLowerCase().includes('mysql') || c.name.toLowerCase().includes('mariadb'));
+    const mysqlRunning = mysqlContainer && mysqlContainer.status === 'running';
+
+    let dbStatus: 'ok' | 'warning' | 'critical' = 'ok';
+    let dbBadge = '🟢 OK';
+    let dbValue = 'SQLite Íntegro (WAL Mode)';
+    let dbDetails = 'Banco de dados SQLite operacional com integridade confirmada.';
+
+    if (!sqliteOk) {
+      dbStatus = 'critical';
+      dbBadge = '🔴 Erro SQLite';
+      dbValue = 'Falha de Integridade SQLite';
+      dbDetails = 'Falha detectada no arquivo SQLite do painel.';
+    } else if (pgRunning) {
+      dbValue = 'PostgreSQL 16 Ativo (Porta 5432) & SQLite Íntegro';
+      dbDetails = 'PostgreSQL operando no host e SQLite operacional.';
+    } else if (mysqlRunning) {
+      dbValue = `MySQL Ativo (${mysqlContainer.name}) & SQLite Íntegro`;
+      dbDetails = 'Banco MySQL ativo em container Docker e SQLite operacional.';
+    }
+
     checks.push({
       id: 'postgres_check',
-      name: 'Banco de Dados (PostgreSQL / MySQL)',
+      name: 'Banco de Dados (PostgreSQL / SQLite)',
       category: 'services',
-      status: 'ok',
-      statusBadge: '🟢 OK',
-      value: pgRunning ? 'PostgreSQL 16 Ativo (Porta 5432)' : 'Bancos de Dados Ativos (Containers MySQL/MariaDB)',
-      details: pgRunning ? 'PostgreSQL 16 operando normalmente no servidor.' : 'Bancos de dados relacionais gerenciados com saúde via Docker.'
+      status: dbStatus,
+      statusBadge: dbBadge,
+      value: dbValue,
+      details: dbDetails
     });
 
-    // 9. Redis Cache
+    // 9. Redis Cache (Truthful Verification)
     const redisSvc = services.find(s => s.name === 'redis');
+    const redisRunning = redisSvc && redisSvc.status === 'running';
     checks.push({
       id: 'redis_check',
       name: 'Redis In-Memory Cache',
       category: 'services',
-      status: redisSvc && redisSvc.status === 'running' ? 'ok' : 'ok',
-      statusBadge: '🟢 OK',
-      value: redisSvc && redisSvc.status === 'running' ? 'Ativo' : 'Opcional / Standby',
-      details: 'Cache Redis configurado ou gerenciado sob demanda.'
+      status: 'ok',
+      statusBadge: redisRunning ? '🟢 OK' : '⚪ Standby (Opcional)',
+      value: redisRunning ? 'Redis Ativo (Porta 6379)' : 'Não detectado (Opcional)',
+      details: redisRunning ? 'Serviço de cache em memória Redis ativo e respondendo.' : 'Cache Redis não está ativo no host. Se suas aplicações usam cache interno ou MySQL/SQLite, nenhuma ação é requerida.'
     });
 
-    // 10. PM2 Process Manager
+    // 10. PM2 Process Manager (Truthful Verification)
     const pm2Svc = services.find(s => s.name === 'pm2');
+    const pm2Running = pm2Svc && pm2Svc.status === 'running';
     checks.push({
       id: 'pm2_check',
       name: 'PM2 Process Manager',
       category: 'services',
       status: 'ok',
-      statusBadge: '🟢 OK',
-      value: pm2Svc && pm2Svc.status === 'running' ? 'Ativo' : 'Disponível',
-      details: 'Gerenciador de processos Node.js disponível.'
+      statusBadge: pm2Running ? '🟢 OK' : '⚪ Standby (Opcional)',
+      value: pm2Running ? 'PM2 Ativo' : 'Não detectado (Opcional)',
+      details: pm2Running ? 'Gerenciador de processos Node.js PM2 ativo.' : 'Processos Node/Web gerenciados via Docker e Systemd.'
     });
 
     // 11. DNS Resolution
@@ -313,15 +350,40 @@ export class CheckupService {
       details: 'Apenas as portas autorizadas estão expostas para a internet.'
     });
 
-    // 14. Firewall (UFW / Iptables)
+    // 14. Firewall (UFW / Iptables & Fail2Ban)
+    const fail2banSvc = services.find(s => s.name === 'fail2ban');
+    const ufwSvc = services.find(s => s.name === 'ufw');
+    const isFail2banRunning = fail2banSvc && fail2banSvc.status === 'running';
+    const isUfwRunning = ufwSvc && ufwSvc.status === 'running';
+
+    let fwStatus: 'ok' | 'warning' | 'critical' = 'ok';
+    let fwBadge = '🟢 OK';
+    let fwValue = 'UFW & Fail2Ban Ativos';
+    let fwDetails = 'Firewall UFW ativo e Fail2Ban monitorando tentativas de intrusão no SSH.';
+
+    if (isFail2banRunning && isUfwRunning) {
+      fwValue = 'UFW Ativo (Iptables) & Fail2Ban Operante';
+      fwDetails = 'Firewall UFW ativo e serviço Fail2Ban protegendo a porta SSH contra força bruta.';
+    } else if (isUfwRunning || isFail2banRunning) {
+      fwStatus = 'ok';
+      fwBadge = '🟢 OK';
+      fwValue = isUfwRunning ? 'UFW Ativo (Iptables Operante)' : 'Fail2Ban Operante';
+      fwDetails = isUfwRunning ? 'Regras de firewall ativas protegendo o host.' : 'Serviço Fail2Ban ativo monitorando acessos.';
+    } else {
+      fwStatus = 'warning';
+      fwBadge = '🟡 Atenção';
+      fwValue = 'UFW / Fail2Ban Não Detectados';
+      fwDetails = 'Certifique-se de que as portas de segurança estão devidamente protegidas pelo Security List da VCN na Oracle Cloud.';
+    }
+
     checks.push({
       id: 'firewall_check',
       name: 'Firewall UFW & Fail2Ban',
       category: 'security',
-      status: 'ok',
-      statusBadge: '🟢 OK',
-      value: 'UFW Ativo com regras restritas e Fail2Ban protegendo SSH',
-      details: 'Proteção contra acessos não autorizados e ataques de força bruta ativa.'
+      status: fwStatus,
+      statusBadge: fwBadge,
+      value: fwValue,
+      details: fwDetails
     });
 
     // 15. System Uptime & Stability

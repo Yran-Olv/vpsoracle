@@ -1,4 +1,5 @@
 import si from 'systeminformation';
+import os from 'os';
 import { db } from '../database';
 import { config } from '../config';
 
@@ -72,9 +73,17 @@ export interface SystemMetrics {
 let lastDiskStats: { rIO: number; wIO: number; rBytes: number; wBytes: number; time: number } | null = null;
 let lastNetStats: { rx: number; tx: number; time: number } | null = null;
 
+// Centralized Telemetry Cache (avoids redundant simultaneous system queries)
+let cachedMetrics: SystemMetrics | null = null;
+let lastCollectTimestamp = 0;
+const CACHE_TTL_MS = 2500;
+
 export class MetricsService {
-  static async collectMetrics(): Promise<SystemMetrics> {
+  static async collectMetrics(force = false): Promise<SystemMetrics> {
     const now = Date.now();
+    if (!force && cachedMetrics && (now - lastCollectTimestamp) < CACHE_TTL_MS) {
+      return cachedMetrics;
+    }
     const [
       cpuData,
       cpuLoad,
@@ -186,12 +195,12 @@ export class MetricsService {
         usagePercent: Math.round(cpuLoad.currentLoad * 10) / 10,
         userPercent: Math.round(cpuLoad.currentLoadUser * 10) / 10,
         systemPercent: Math.round(cpuLoad.currentLoadSystem * 10) / 10,
-        cores: cpuData.cores || 4,
-        model: cpuData.brand || cpuData.manufacturer || 'ARM Neoverse-N1',
-        speed: cpuData.speed || 2.8,
-        load1m: Math.round((cpuLoad.avgLoad || 0) * 100) / 100,
-        load5m: Math.round((cpuLoad.avgLoad || 0) * 100) / 100,
-        load15m: Math.round((cpuLoad.avgLoad || 0) * 100) / 100,
+        cores: cpuData.cores || 2,
+        model: cpuData.brand || cpuData.manufacturer || 'Ampere Altra A1 (ARM64)',
+        speed: cpuData.speed || 3.0,
+        load1m: Math.round((os.loadavg()[0] ?? cpuLoad.avgLoad ?? 0) * 100) / 100,
+        load5m: Math.round((os.loadavg()[1] ?? cpuLoad.avgLoad ?? 0) * 100) / 100,
+        load15m: Math.round((os.loadavg()[2] ?? cpuLoad.avgLoad ?? 0) * 100) / 100,
         temperature: cpuTemp.main && !isNaN(cpuTemp.main) ? Math.round(cpuTemp.main) : null
       },
       memory: {
@@ -239,6 +248,9 @@ export class MetricsService {
         arch: osInfo.arch || 'aarch64'
       }
     };
+
+    cachedMetrics = metrics;
+    lastCollectTimestamp = now;
 
     return metrics;
   }

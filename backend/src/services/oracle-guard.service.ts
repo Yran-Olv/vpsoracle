@@ -67,17 +67,17 @@ export class OracleGuardService {
     const ramTenancyPercent = Math.min(100, Math.round((allocatedRamGb / ramRuleGb) * 100));
     const ramStatus = this.calculateQuotaAllocationStatus(allocatedRamGb, ramRuleGb);
 
-    // 3. Storage Resource (Disk Total vs 200GB Free Tier limit)
+    // 3. Tenancy Provisioned Storage Quota vs 200GB Free Tier limit
     const usedStorageGb = Math.round((metrics.disk.usedBytes / (1024 * 1024 * 1024)) * 10) / 10;
     const storageTotalAllocatedGb = Math.round((metrics.disk.totalBytes / (1024 * 1024 * 1024)) * 10) / 10;
-    const storagePercent = Math.round((usedStorageGb / storageRuleGb) * 1000) / 10;
-    const storageStatus = this.calculateStatus(storagePercent, 75, 85, 95);
+    const provisionedStoragePercent = Math.min(100, Math.round((storageTotalAllocatedGb / storageRuleGb) * 1000) / 10);
+    const provisionedStorageStatus = this.calculateQuotaAllocationStatus(storageTotalAllocatedGb, storageRuleGb);
 
-    // 4. Boot Volume Margin
-    const bootVolumePercent = Math.round((metrics.disk.usedBytes / metrics.disk.totalBytes) * 1000) / 10;
+    // 4. Boot Volume Local Filesystem Space (Disk partition occupancy)
+    const bootVolumePercent = Math.round((usedStorageGb / storageTotalAllocatedGb) * 1000) / 10;
     const bootVolumeStatus = this.calculateStatus(bootVolumePercent, 75, 85, 95);
 
-    // 5. Network Egress Transfer
+    // 5. Network Egress Transfer (Operational telemetry estimate)
     const monthlyNetTb = Math.round(((metrics.network.totalTxBytes / (1024 * 1024 * 1024 * 1024)) * 1000)) / 1000;
     const netPercent = Math.round((monthlyNetTb / bandwidthRuleTb) * 1000) / 10;
     const netStatus = this.calculateStatus(netPercent, 60, 80, 90);
@@ -98,7 +98,7 @@ export class OracleGuardService {
         formattedCurrent: `${allocatedOcpu} OCPUs alocadas (${usedOcpu} OCPU em uso)`,
         formattedLimit: `${ocpuRule} OCPUs Always Free (Tenancy)`,
         usagePercent: ocpuTenancyPercent,
-        remainingMargin: `${ocpuRule - allocatedOcpu} OCPUs livres na tenancy`,
+        remainingMargin: `${Math.max(0, ocpuRule - allocatedOcpu)} OCPUs livres na tenancy`,
         status: ocpuStatus.status,
         statusColor: ocpuStatus.color,
         statusBadge: ocpuStatus.badge,
@@ -124,53 +124,53 @@ export class OracleGuardService {
       },
       {
         id: 'storage',
-        name: 'Armazenamento Total (Block + Boot)',
+        name: 'Cota de Armazenamento Tenancy (Boot + Block Volumes)',
         category: 'storage',
-        currentUsage: usedStorageGb,
+        currentUsage: storageTotalAllocatedGb,
         limit: storageRuleGb,
         unit: 'GB',
-        formattedCurrent: `${usedStorageGb} GB utilizados`,
+        formattedCurrent: `${storageTotalAllocatedGb} GB provisionados na tenancy`,
         formattedLimit: `${storageRuleGb} GB Always Free`,
-        usagePercent: storagePercent,
-        remainingMargin: `${Math.round((storageRuleGb - usedStorageGb) * 10) / 10} GB disponíveis no Free Tier`,
-        status: storageStatus.status,
-        statusColor: storageStatus.color,
-        statusBadge: storageStatus.badge,
-        details: `Limite oficial Oracle: 200 GB no total entre Boot Volumes e Block Volumes. O disco desta VM tem ${storageTotalAllocatedGb} GB.`,
+        usagePercent: provisionedStoragePercent,
+        remainingMargin: `${Math.max(0, Math.round((storageRuleGb - storageTotalAllocatedGb) * 10) / 10)} GB disponíveis para novos volumes`,
+        status: provisionedStorageStatus.status,
+        statusColor: provisionedStorageStatus.color,
+        statusBadge: provisionedStorageStatus.badge,
+        details: `Limite oficial Oracle: 200 GB totais provisionados em Boot Volumes e Block Volumes. Esta VM aloca ${storageTotalAllocatedGb} GB.`,
         isOfficialRule: true
       },
       {
         id: 'boot_volume',
-        name: 'Volume de Inicialização (Boot Volume)',
+        name: 'Ocupação do Disco / Partição Raiz (Filesystem)',
         category: 'storage',
         currentUsage: usedStorageGb,
         limit: storageTotalAllocatedGb,
         unit: 'GB',
-        formattedCurrent: `${usedStorageGb} GB ocupados`,
-        formattedLimit: `${storageTotalAllocatedGb} GB capacidade`,
+        formattedCurrent: `${usedStorageGb} GB ocupados no disco local`,
+        formattedLimit: `${storageTotalAllocatedGb} GB capacidade da partição`,
         usagePercent: bootVolumePercent,
-        remainingMargin: `${Math.round((storageTotalAllocatedGb - usedStorageGb) * 10) / 10} GB livres no disco local`,
+        remainingMargin: `${Math.max(0, Math.round((storageTotalAllocatedGb - usedStorageGb) * 10) / 10)} GB livres na partição local`,
         status: bootVolumeStatus.status,
         statusColor: bootVolumeStatus.color,
         statusBadge: bootVolumeStatus.badge,
-        details: 'Volume raiz particionado em ext4.',
+        details: 'Espaço ocupado pelos arquivos e containers no sistema de arquivos ext4 da partição raiz.',
         isOfficialRule: true
       },
       {
         id: 'network',
-        name: 'Tráfego de Saída (Egress Transfer)',
+        name: 'Tráfego de Saída (Egress Transfer Estimado)',
         category: 'network',
         currentUsage: monthlyNetTb,
         limit: bandwidthRuleTb,
         unit: 'TB/mês',
-        formattedCurrent: `${monthlyNetTb} TB consumidos este mês`,
+        formattedCurrent: `${monthlyNetTb} TB acumulados na interface (estimativa local)`,
         formattedLimit: `${bandwidthRuleTb} TB / mês Always Free`,
         usagePercent: netPercent,
-        remainingMargin: `${Math.round((bandwidthRuleTb - monthlyNetTb) * 100) / 100} TB restantes`,
+        remainingMargin: `${Math.max(0, Math.round((bandwidthRuleTb - monthlyNetTb) * 100) / 100)} TB restantes`,
         status: netStatus.status,
         statusColor: netStatus.color,
         statusBadge: netStatus.badge,
-        details: 'Limite oficial Oracle: 10 TB/mês de egress de dados para internet grátis.',
+        details: 'Limite oficial Oracle: 10 TB/mês de tráfego de saída gratuito. O valor exibido baseia-se na telemetria de interface de rede do host (/proc/net/dev) e representa uma estimativa operacional local, não a fatura oficial da Oracle Cloud.',
         isOfficialRule: true
       },
       {
@@ -192,27 +192,36 @@ export class OracleGuardService {
       }
     ];
 
-    // 7. Idle Instance Reclamation Evaluation
+    // 7. Idle Instance Reclamation Evaluation (Janela de 7 dias com validação de suficiência amostral)
     const history = MetricsService.getHistory('7d');
     let cpu95 = metrics.cpu.usagePercent;
     let ram95 = metrics.memory.usagePercent;
     let net95 = 5;
+    let hasSufficientData = false;
+    let sampledHours = 0;
 
-    if (history.length > 5) {
+    if (history.length > 10) {
+      const firstTs = history[0].timestamp;
+      const lastTs = history[history.length - 1].timestamp;
+      sampledHours = Math.round(Math.abs(lastTs - firstTs) / (3600 * 1000));
+      hasSufficientData = sampledHours >= 72; // Pelo menos 3 dias de telemetria contínua
+
       const sortedCpu = [...history.map(h => h.cpu)].sort((a, b) => a - b);
       const sortedMem = [...history.map(h => h.memory)].sort((a, b) => a - b);
-      const p95Index = Math.floor(sortedCpu.length * 0.95);
-      cpu95 = sortedCpu[p95Index] || metrics.cpu.usagePercent;
-      ram95 = sortedMem[p95Index] || metrics.memory.usagePercent;
+      const p95Index = Math.min(sortedCpu.length - 1, Math.max(0, Math.floor(sortedCpu.length * 0.95)));
+      cpu95 = sortedCpu[p95Index] ?? metrics.cpu.usagePercent;
+      ram95 = sortedMem[p95Index] ?? metrics.memory.usagePercent;
     }
 
-    const isIdleAtRisk = (cpu95 < 20 && ram95 < 20);
+    const isIdleAtRisk = hasSufficientData && (cpu95 < 20 && ram95 < 20);
     let idleStatus: 'SEGURO' | 'ATENÇÃO' | 'RISCO' = 'SEGURO';
     let idleWarning: string | null = null;
 
     if (isIdleAtRisk) {
       idleStatus = 'ATENÇÃO';
-      idleWarning = 'Atenção: A Oracle possui uma regra oficial que pode desligar ou reclamar instâncias Always Free se o percentil 95 de CPU, RAM e Rede permanecer abaixo de 20% durante 7 dias. Seu uso de RAM/CPU está baixo. Mantenha seus serviços/containers rodando.';
+      idleWarning = 'Atenção: A Oracle possui uma regra oficial que pode desligar ou reclamar instâncias Always Free se o percentil 95 de CPU, RAM e Rede permanecer abaixo de 20% durante 7 dias consecutivos. Mantenha seus serviços/containers rodando.';
+    } else if (!hasSufficientData) {
+      idleWarning = `Amostragem em andamento (${sampledHours}h de dados coletados). A política oficial da Oracle avalia 7 dias contínuos de percentil 95.`;
     }
 
     // Calculate Overall Status

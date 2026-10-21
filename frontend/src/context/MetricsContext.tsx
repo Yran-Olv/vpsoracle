@@ -55,7 +55,9 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let fallbackInterval: NodeJS.Timeout | null = null;
 
     try {
-      eventSource = new EventSource('/events');
+      const token = localStorage.getItem('token');
+      const sseUrl = token ? `/events?token=${encodeURIComponent(token)}` : '/events';
+      eventSource = new EventSource(sseUrl);
       eventSource.onopen = () => {
         setIsLive(true);
       };
