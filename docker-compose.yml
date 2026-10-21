@@ -1,0 +1,56 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vps-multivus-backend
+    pid: host
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3050:3050"
+    environment:
+      - NODE_ENV=production
+      - PORT=3050
+      - JWT_SECRET=${JWT_SECRET:-vps-multivus-oracle-2026-safe-token-multivus-secret}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Systemzap@2025}
+      - TIMEZONE=America/Sao_Paulo
+      - METRICS_INTERVAL_SEC=10
+      - HEALTHCHECK_INTERVAL_SEC=30
+      - MAIN_DOMAIN=vps.multivus.com.br
+    volumes:
+      - multivus-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    deploy:
+      resources:
+        limits:
+          memory: 250M
+    networks:
+      - multivus-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vps-multivus-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3060:80"
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 100M
+    networks:
+      - multivus-net
+
+volumes:
+  multivus-data:
+    driver: local
+
+networks:
+  multivus-net:
+    driver: bridge

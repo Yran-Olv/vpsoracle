@@ -1,0 +1,16 @@
+{
+  "name": "VPS Multivus — Monitor Oracle",
+  "short_name": "VPS Multivus",
+  "description": "Painel de monitoramento em tempo real da VPS Oracle Always Free",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070b12",
+  "theme_color": "#0d131f",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
