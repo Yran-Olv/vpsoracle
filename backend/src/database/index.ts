@@ -178,6 +178,37 @@ export function initDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS servers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      hostname TEXT,
+      ip_address TEXT NOT NULL,
+      port INTEGER DEFAULT 443,
+      provider TEXT NOT NULL DEFAULT 'oracle', -- 'oracle' | 'generic' | 'aws' | 'digitalocean' | 'hetzner'
+      environment TEXT NOT NULL DEFAULT 'production', -- 'production' | 'staging' | 'backup'
+      connection_type TEXT NOT NULL DEFAULT 'agent', -- 'local' | 'agent' | 'ssh'
+      api_key_hash TEXT,
+      status TEXT NOT NULL DEFAULT 'online', -- 'online' | 'offline' | 'pending' | 'disabled'
+      is_default INTEGER DEFAULT 0,
+      os_info TEXT,
+      agent_version TEXT,
+      last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS user_servers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      server_id INTEGER NOT NULL,
+      permission TEXT NOT NULL DEFAULT 'admin', -- 'admin' | 'operator' | 'viewer'
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
+      UNIQUE(user_id, server_id)
+    );
+
     CREATE TABLE IF NOT EXISTS audit_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       action TEXT NOT NULL,
@@ -187,6 +218,57 @@ export function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Non-destructive Column Migrations for Multi-Server Architecture
+  function ensureColumn(tableName: string, columnName: string, columnDef: string) {
+    try {
+      const pragma = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+      const exists = pragma.some(c => c.name === columnName);
+      if (!exists) {
+        db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`);
+      }
+    } catch (e) {}
+  }
+
+  ensureColumn('users', 'status', "TEXT NOT NULL DEFAULT 'active'");
+  ensureColumn('metrics_raw', 'server_id', 'INTEGER DEFAULT 1');
+  ensureColumn('metrics_hourly', 'server_id', 'INTEGER DEFAULT 1');
+  ensureColumn('incidents', 'server_id', 'INTEGER DEFAULT 1');
+  ensureColumn('checkup_reports', 'server_id', 'INTEGER DEFAULT 1');
+  ensureColumn('alerts_history', 'server_id', 'INTEGER DEFAULT 1');
+  ensureColumn('alerts_config', 'server_id', 'INTEGER DEFAULT 1');
+
+  // Multi-server Indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_metrics_raw_server_ts ON metrics_raw(server_id, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_metrics_hourly_server_ts ON metrics_hourly(server_id, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_checkup_server ON checkup_reports(server_id);
+    CREATE INDEX IF NOT EXISTS idx_incidents_server ON incidents(server_id, status);
+  `);
+
+  // Seed default server (ID 1: Host Central Oracle) if absent
+  const defaultServerExists = db.prepare('SELECT id FROM servers WHERE is_default = 1 OR id = 1').get();
+  if (!defaultServerExists) {
+    db.prepare(`
+      INSERT OR REPLACE INTO servers (
+        id, name, hostname, ip_address, port, provider, environment, connection_type, status, is_default, os_info, agent_version, notes, last_seen_at
+      ) VALUES (
+        1, 'Oracle Principal (Host Central)', 'multivusvps', '147.15.19.44', 3050, 'oracle', 'production', 'local', 'online', 1, 'Ubuntu 24.04 LTS (ARM64 Ampere A1)', 'native-1.0.0', 'Servidor central Multivus hospedado na Oracle Cloud Always Free (São Paulo - GRU).', CURRENT_TIMESTAMP
+      )
+    `).run();
+  }
+
+  // Migrate legacy records to server_id = 1
+  try {
+    db.exec(`
+      UPDATE metrics_raw SET server_id = 1 WHERE server_id IS NULL;
+      UPDATE metrics_hourly SET server_id = 1 WHERE server_id IS NULL;
+      UPDATE incidents SET server_id = 1 WHERE server_id IS NULL;
+      UPDATE checkup_reports SET server_id = 1 WHERE server_id IS NULL;
+      UPDATE alerts_history SET server_id = 1 WHERE server_id IS NULL;
+      UPDATE alerts_config SET server_id = 1 WHERE server_id IS NULL;
+    `);
+  } catch (e) {}
 
   // Seed default admin user if not exists
   const existingUser = db.prepare('SELECT id FROM users WHERE username = ?').get(config.adminUsername);

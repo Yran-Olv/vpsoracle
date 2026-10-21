@@ -10,9 +10,11 @@ import {
 } from 'recharts';
 import { MetricHistoryPoint, MetricStatsSummary } from '../../types';
 import { metricsApi } from '../../services/api';
+import { useServer } from '../../context/ServerContext';
 import { Activity, Cpu, Database, HardDrive, Wifi, RefreshCw } from 'lucide-react';
 
 export const MetricCharts: React.FC = () => {
+  const { activeServerId } = useServer();
   const [range, setRange] = useState<'1h' | '6h' | '24h' | '7d' | '30d'>('1h');
   const [activeTab, setActiveTab] = useState<'cpu' | 'memory' | 'disk' | 'network'>('cpu');
   const [points, setPoints] = useState<MetricHistoryPoint[]>([]);
@@ -22,7 +24,7 @@ export const MetricCharts: React.FC = () => {
   const fetchHistory = async () => {
     setIsLoading(true);
     try {
-      const data = await metricsApi.getHistory(range);
+      const data = await metricsApi.getHistory(range, activeServerId);
       setPoints(data.points);
       setSummary(data.summary);
     } catch (err) {
@@ -35,7 +37,7 @@ export const MetricCharts: React.FC = () => {
     fetchHistory();
     const interval = setInterval(fetchHistory, 15000);
     return () => clearInterval(interval);
-  }, [range]);
+  }, [range, activeServerId]);
 
   const formatTimeLabel = (timestamp: number) => {
     const d = new Date(timestamp);

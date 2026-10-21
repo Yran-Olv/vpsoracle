@@ -1,6 +1,8 @@
 import axios from 'axios';
 import {
   User,
+  ServerItem,
+  UserItem,
   SystemMetrics,
   MetricHistoryPoint,
   MetricStatsSummary,
@@ -67,20 +69,84 @@ export const authApi = {
   }
 };
 
-export const metricsApi = {
-  getRealtime: async (): Promise<SystemMetrics> => {
-    const res = await api.get('/metrics');
+export const serversApi = {
+  list: async (): Promise<ServerItem[]> => {
+    const res = await api.get('/servers');
     return res.data;
   },
-  getHistory: async (range: '1h' | '6h' | '24h' | '7d' | '30d'): Promise<{ range: string; summary: MetricStatsSummary; points: MetricHistoryPoint[] }> => {
-    const res = await api.get(`/metrics/history?range=${range}`);
+  get: async (id: number): Promise<ServerItem> => {
+    const res = await api.get(`/servers/${id}`);
+    return res.data;
+  },
+  create: async (data: Partial<ServerItem>): Promise<{ message: string; server: ServerItem; rawAgentToken: string }> => {
+    const res = await api.post('/servers', data);
+    return res.data;
+  },
+  update: async (id: number, data: Partial<ServerItem>): Promise<{ message: string; server: ServerItem }> => {
+    const res = await api.put(`/servers/${id}`, data);
+    return res.data;
+  },
+  toggleStatus: async (id: number): Promise<{ message: string; server: ServerItem }> => {
+    const res = await api.post(`/servers/${id}/toggle-status`);
+    return res.data;
+  },
+  rotateToken: async (id: number): Promise<{ message: string; rawAgentToken: string }> => {
+    const res = await api.post(`/servers/${id}/token/rotate`);
+    return res.data;
+  },
+  testConnection: async (id: number): Promise<{ reachable: boolean; latencyMs?: number; message: string; agentVersion?: string; lastSeen?: string }> => {
+    const res = await api.post(`/servers/${id}/test-connection`);
+    return res.data;
+  },
+  delete: async (id: number, deleteHistory = false): Promise<{ message: string }> => {
+    const res = await api.delete(`/servers/${id}?deleteHistory=${deleteHistory}`);
+    return res.data;
+  }
+};
+
+export const usersApi = {
+  list: async (): Promise<UserItem[]> => {
+    const res = await api.get('/users');
+    return res.data;
+  },
+  create: async (data: { username: string; password: string; role?: string }): Promise<{ message: string; user: UserItem }> => {
+    const res = await api.post('/users', data);
+    return res.data;
+  },
+  update: async (id: number, data: { role?: string; status?: string }): Promise<{ message: string; user: UserItem }> => {
+    const res = await api.put(`/users/${id}`, data);
+    return res.data;
+  },
+  resetPassword: async (id: number, password: string): Promise<{ message: string }> => {
+    const res = await api.post(`/users/${id}/password`, { password });
+    return res.data;
+  },
+  delete: async (id: number): Promise<{ message: string }> => {
+    const res = await api.delete(`/users/${id}`);
+    return res.data;
+  }
+};
+
+export const metricsApi = {
+  getRealtime: async (serverId?: number | 'all'): Promise<SystemMetrics> => {
+    const query = serverId !== undefined ? `?serverId=${serverId}` : '';
+    const res = await api.get(`/metrics${query}`);
+    return res.data;
+  },
+  getHistory: async (
+    range: '1h' | '6h' | '24h' | '7d' | '30d',
+    serverId?: number | 'all'
+  ): Promise<{ range: string; summary: MetricStatsSummary; points: MetricHistoryPoint[] }> => {
+    const serverQuery = serverId !== undefined ? `&serverId=${serverId}` : '';
+    const res = await api.get(`/metrics/history?range=${range}${serverQuery}`);
     return res.data;
   }
 };
 
 export const dockerApi = {
-  getOverview: async (): Promise<DockerOverview> => {
-    const res = await api.get('/docker');
+  getOverview: async (serverId?: number | 'all'): Promise<DockerOverview> => {
+    const query = serverId !== undefined ? `?serverId=${serverId}` : '';
+    const res = await api.get(`/docker${query}`);
     return res.data;
   },
   getLogs: async (containerId: string, lines = 100): Promise<{ id: string; logs: string }> => {
@@ -94,8 +160,9 @@ export const dockerApi = {
 };
 
 export const servicesApi = {
-  getAll: async (): Promise<SystemService[]> => {
-    const res = await api.get('/services');
+  getAll: async (serverId?: number | 'all'): Promise<SystemService[]> => {
+    const query = serverId !== undefined ? `?serverId=${serverId}` : '';
+    const res = await api.get(`/services${query}`);
     return res.data;
   }
 };
@@ -173,12 +240,14 @@ export const riskApi = {
 };
 
 export const checkupApi = {
-  runCheckup: async (): Promise<CheckupReport> => {
-    const res = await api.post('/checkup');
+  runCheckup: async (serverId?: number): Promise<CheckupReport> => {
+    const query = serverId !== undefined ? `?serverId=${serverId}` : '';
+    const res = await api.post(`/checkup${query}`);
     return res.data;
   },
-  getLatest: async (): Promise<CheckupReport> => {
-    const res = await api.get('/checkup/latest');
+  getLatest: async (serverId?: number): Promise<CheckupReport> => {
+    const query = serverId !== undefined ? `?serverId=${serverId}` : '';
+    const res = await api.get(`/checkup/latest${query}`);
     return res.data;
   }
 };

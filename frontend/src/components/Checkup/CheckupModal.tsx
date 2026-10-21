@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { CheckupReport } from '../../types';
 import { checkupApi, reportApi } from '../../services/api';
+import { useServer } from '../../context/ServerContext';
 
 interface CheckupModalProps {
   isOpen: boolean;
@@ -18,11 +19,14 @@ interface CheckupModalProps {
 }
 
 export const CheckupModal: React.FC<CheckupModalProps> = ({ isOpen, onClose }) => {
+  const { activeServer, activeServerId } = useServer();
   const [report, setReport] = useState<CheckupReport | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
 
   if (!isOpen) return null;
+
+  const targetServerId = activeServerId === 'all' ? undefined : activeServerId;
 
   const handleRunCheckup = async () => {
     setIsRunning(true);
@@ -32,7 +36,7 @@ export const CheckupModal: React.FC<CheckupModalProps> = ({ isOpen, onClose }) =
     }, 400);
 
     try {
-      const res = await checkupApi.runCheckup();
+      const res = await checkupApi.runCheckup(targetServerId);
       setProgress(100);
       setTimeout(() => {
         setReport(res);

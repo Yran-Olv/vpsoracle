@@ -2,6 +2,8 @@ import React from 'react';
 import { useMetrics } from '../../context/MetricsContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useServer } from '../../context/ServerContext';
+import { ServerSelector } from '../Servers/ServerSelector';
 import { 
   Server, 
   ShieldCheck, 
@@ -20,51 +22,46 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onOpenCheckup }) => {
-  const { metrics, isLive, secondsAgo, refreshMetrics, isLoading } = useMetrics();
+  const { isLive, secondsAgo, refreshMetrics, isLoading } = useMetrics();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { activeServer, activeServerId } = useServer();
 
   const handleDownloadReport = () => {
     reportApi.downloadMarkdown();
   };
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-[#090e18]/85 backdrop-blur-md border-b border-slate-800/80 px-4 md:px-6 flex items-center justify-between">
-      {/* Left: Brand and Status */}
-      <div className="flex items-center gap-3 md:gap-4">
-        <div className="flex items-center gap-2.5">
+    <header className="sticky top-0 z-30 h-16 bg-[#090e18]/85 backdrop-blur-md border-b border-slate-800/80 px-4 md:px-6 flex items-center justify-between gap-3">
+      {/* Left: Brand, Global Server Selector */}
+      <div className="flex items-center gap-3 md:gap-4 min-w-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           <div className="relative">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500/20 via-orange-500/20 to-amber-500/10 border border-red-500/30 flex items-center justify-center">
-              <Server className="w-5 h-5 text-red-400" />
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500/20 via-indigo-500/20 to-purple-500/10 border border-blue-500/30 flex items-center justify-center">
+              <Server className="w-5 h-5 text-blue-400" />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#090e18] rounded-full animate-pulse" />
           </div>
-          <div>
+          <div className="hidden xl:block">
             <div className="flex items-center gap-2">
-              <h1 className="text-sm md:text-base font-bold tracking-tight text-white flex items-center gap-1.5">
+              <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
                 VPS MULTIVUS
-                <span className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 hidden sm:inline-block">
-                  Oracle Always Free
+                <span className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  Fleet Manager
                 </span>
               </h1>
             </div>
-            <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-              <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                ONLINE
-              </span>
-              <span className="hidden md:inline text-slate-600">•</span>
-              <span className="hidden md:flex items-center gap-1 text-slate-400">
-                <Globe className="w-3 h-3 text-blue-400" />
-                147.15.19.44 (vps.multivus.com.br)
-              </span>
-            </div>
           </div>
+        </div>
+
+        {/* Global Server Selector Dropdown */}
+        <div className="shrink-0">
+          <ServerSelector />
         </div>
       </div>
 
       {/* Right: Actions, Refresh, Checkup, Profile */}
-      <div className="flex items-center gap-2 md:gap-3">
+      <div className="flex items-center gap-2 md:gap-3 shrink-0">
         {/* Live Pulse info */}
         <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-400 font-mono">
           <Activity className={`w-3.5 h-3.5 ${isLive ? 'text-emerald-400 animate-pulse' : 'text-amber-400'}`} />

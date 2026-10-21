@@ -1,12 +1,15 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ServerProvider } from './context/ServerContext';
 import { MetricsProvider } from './context/MetricsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Layout } from './components/Layout/Layout';
 
 // Pages
 import { DashboardPage } from './pages/DashboardPage';
+import { ServersPage } from './pages/ServersPage';
+import { UsersPage } from './pages/UsersPage';
 import { ServerPage } from './pages/ServerPage';
 import { DockerPage } from './pages/DockerPage';
 import { ServicesPage } from './pages/ServicesPage';
@@ -40,44 +43,48 @@ export const App: React.FC = () => {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <MetricsProvider>
-          <BrowserRouter>
-            <Routes>
-              {/* Public Route */}
-              <Route path="/login" element={<LoginPage />} />
+        <ServerProvider>
+          <MetricsProvider>
+            <BrowserRouter>
+              <Routes>
+                {/* Public Route */}
+                <Route path="/login" element={<LoginPage />} />
 
-              {/* Protected Routes */}
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <Layout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<Navigate to="/dashboard" replace />} />
-                <Route path="dashboard" element={<DashboardPage />} />
-                <Route path="server" element={<ServerPage />} />
-                <Route path="docker" element={<DockerPage />} />
-                <Route path="services" element={<ServicesPage />} />
-                <Route path="domains" element={<DomainsPage />} />
-                <Route path="oracle" element={<OraclePage />} />
-                <Route path="oracle/free-tier" element={<OraclePage />} />
-                <Route path="oracle/billing" element={<OraclePage />} />
-                <Route path="news" element={<NewsPage />} />
-                <Route path="news/reddit" element={<NewsPage />} />
-                <Route path="alerts" element={<AlertsPage />} />
-                <Route path="incidents" element={<AlertsPage />} />
-                <Route path="history" element={<ServerPage />} />
-                <Route path="checkup" element={<CheckupPage />} />
-                <Route path="settings" element={<SettingsPage />} />
-              </Route>
+                {/* Protected Routes */}
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <Layout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<Navigate to="/dashboard" replace />} />
+                  <Route path="dashboard" element={<DashboardPage />} />
+                  <Route path="servers" element={<ServersPage />} />
+                  <Route path="users" element={<UsersPage />} />
+                  <Route path="server" element={<ServerPage />} />
+                  <Route path="docker" element={<DockerPage />} />
+                  <Route path="services" element={<ServicesPage />} />
+                  <Route path="domains" element={<DomainsPage />} />
+                  <Route path="oracle" element={<OraclePage />} />
+                  <Route path="oracle/free-tier" element={<OraclePage />} />
+                  <Route path="oracle/billing" element={<OraclePage />} />
+                  <Route path="news" element={<NewsPage />} />
+                  <Route path="news/reddit" element={<NewsPage />} />
+                  <Route path="alerts" element={<AlertsPage />} />
+                  <Route path="incidents" element={<AlertsPage />} />
+                  <Route path="history" element={<ServerPage />} />
+                  <Route path="checkup" element={<CheckupPage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                </Route>
 
-              {/* Fallback */}
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </MetricsProvider>
+                {/* Fallback */}
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </MetricsProvider>
+        </ServerProvider>
       </AuthProvider>
     </ThemeProvider>
   );

@@ -22,6 +22,8 @@ export interface DockerContainerInfo {
   mounts: Array<{ source: string; destination: string; mode: string }>;
 }
 
+import { ServersService } from './servers.service';
+
 export class DockerService {
   private static socketPath = '/var/run/docker.sock';
 
@@ -61,7 +63,7 @@ export class DockerService {
     });
   }
 
-  static async getContainers(): Promise<{
+  static async getContainers(serverId = 1): Promise<{
     available: boolean;
     total: number;
     running: number;
@@ -69,6 +71,40 @@ export class DockerService {
     unhealthy: number;
     containers: DockerContainerInfo[];
   }> {
+    if (serverId > 1) {
+      const cached = ServersService.getCachedServerMetrics(serverId);
+      const rawList = cached?.containers || [];
+      const runningCount = rawList.filter((c: any) => c.status?.toLowerCase().includes('up') || c.status?.toLowerCase().includes('running')).length;
+      const stoppedCount = rawList.length - runningCount;
+
+      return {
+        available: rawList.length > 0,
+        total: rawList.length,
+        running: runningCount,
+        stopped: stoppedCount,
+        unhealthy: 0,
+        containers: rawList.map((c: any) => ({
+          id: (c.id || '').substring(0, 12),
+          name: c.name || c.id || 'container',
+          image: c.image || 'app:latest',
+          version: 'latest',
+          status: (c.status?.toLowerCase().includes('up') ? 'running' : 'stopped') as any,
+          stateString: c.status || 'running',
+          health: 'none',
+          cpuPercent: 0,
+          memoryUsageBytes: 0,
+          memoryLimitBytes: 1024*1024*1024,
+          memoryPercent: 0,
+          networkRxBytes: 0,
+          networkTxBytes: 0,
+          restartCount: 0,
+          uptime: c.status || '',
+          ports: [],
+          mounts: []
+        }))
+      };
+    }
+
     if (!this.isDockerAvailable()) {
       return {
         available: false,

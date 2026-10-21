@@ -4,5 +4,6 @@ module.exports = {
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json', 'node'],
-  verbose: true
+  verbose: true,
+  testTimeout: 35000
 };

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { SystemMetrics } from '../types';
 import { metricsApi } from '../services/api';
 import { useAuth } from './AuthContext';
+import { useServer } from './ServerContext';
 
 interface MetricsContextType {
   metrics: SystemMetrics | null;
@@ -15,6 +16,7 @@ const MetricsContext = createContext<MetricsContextType | undefined>(undefined);
 
 export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
+  const { activeServerId } = useServer();
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isLive, setIsLive] = useState<boolean>(false);
@@ -24,14 +26,14 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const fetchMetrics = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
-      const data = await metricsApi.getRealtime();
+      const data = await metricsApi.getRealtime(activeServerId);
       setMetrics(data);
       setLastUpdate(Date.now());
       setIsLoading(false);
     } catch (e) {
       setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activeServerId]);
 
   // Seconds counter
   useEffect(() => {
@@ -41,7 +43,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => clearInterval(timer);
   }, [lastUpdate]);
 
-  // Real-time SSE Connection with polling fallback
+  // Real-time SSE Connection with polling fallback, keyed to activeServerId
   useEffect(() => {
     if (!isAuthenticated) {
       setMetrics(null);
@@ -49,18 +51,25 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return;
     }
 
+    setIsLoading(true);
     fetchMetrics();
 
     let eventSource: EventSource | null = null;
     let fallbackInterval: NodeJS.Timeout | null = null;
 
     try {
-      const token = localStorage.getItem('token');
-      const sseUrl = token ? `/events?token=${encodeURIComponent(token)}` : '/events';
+      const token = localStorage.getItem('vps_multivus_token') || localStorage.getItem('token');
+      const params = new URLSearchParams();
+      if (token) params.set('token', token);
+      if (activeServerId !== undefined) params.set('serverId', String(activeServerId));
+
+      const sseUrl = `/events?${params.toString()}`;
       eventSource = new EventSource(sseUrl);
+
       eventSource.onopen = () => {
         setIsLive(true);
       };
+
       eventSource.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data);
@@ -71,6 +80,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
         } catch (e) {}
       };
+
       eventSource.onerror = () => {
         setIsLive(false);
         if (eventSource) eventSource.close();
@@ -86,7 +96,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (eventSource) eventSource.close();
       if (fallbackInterval) clearInterval(fallbackInterval);
     };
-  }, [isAuthenticated, fetchMetrics]);
+  }, [isAuthenticated, activeServerId, fetchMetrics]);
 
   return (
     <MetricsContext.Provider value={{ metrics, isLoading, isLive, secondsAgo, refreshMetrics: fetchMetrics }}>

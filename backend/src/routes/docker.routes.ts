@@ -6,7 +6,8 @@ const router = Router();
 
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const data = await DockerService.getContainers();
+    const serverId = parseInt(req.query.serverId as string || '1', 10);
+    const data = await DockerService.getContainers(serverId);
     return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ error: 'Erro ao consultar Docker', details: err.message });
@@ -14,7 +15,8 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 router.get('/containers', authMiddleware, async (req, res) => {
-  const data = await DockerService.getContainers();
+  const serverId = parseInt(req.query.serverId as string || '1', 10);
+  const data = await DockerService.getContainers(serverId);
   return res.json(data.containers);
 });
 

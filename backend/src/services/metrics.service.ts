@@ -70,6 +70,8 @@ export interface SystemMetrics {
   };
 }
 
+import { ServersService } from './servers.service';
+
 let lastDiskStats: { rIO: number; wIO: number; rBytes: number; wBytes: number; time: number } | null = null;
 let lastNetStats: { rx: number; tx: number; time: number } | null = null;
 
@@ -79,7 +81,78 @@ let lastCollectTimestamp = 0;
 const CACHE_TTL_MS = 2500;
 
 export class MetricsService {
-  static async collectMetrics(force = false): Promise<SystemMetrics> {
+  static async collectMetrics(force = false, serverId = 1): Promise<SystemMetrics> {
+    if (serverId > 1) {
+      const cached = ServersService.getCachedServerMetrics(serverId);
+      if (cached && cached.metrics) {
+        return cached.metrics;
+      }
+
+      const row = db.prepare('SELECT * FROM metrics_raw WHERE server_id = ? ORDER BY id DESC LIMIT 1').get(serverId) as any;
+      if (row) {
+        return {
+          timestamp: row.timestamp,
+          cpu: {
+            usagePercent: row.cpu_percent,
+            userPercent: Math.round(row.cpu_percent * 0.7),
+            systemPercent: Math.round(row.cpu_percent * 0.3),
+            cores: 2,
+            model: 'Remote vCPU',
+            speed: 2.4,
+            load1m: row.load_1m,
+            load5m: row.load_5m,
+            load15m: row.load_15m,
+            temperature: null
+          },
+          memory: {
+            totalBytes: row.memory_total_bytes,
+            usedBytes: row.memory_used_bytes,
+            freeBytes: Math.max(0, row.memory_total_bytes - row.memory_used_bytes),
+            availableBytes: Math.max(0, row.memory_total_bytes - row.memory_used_bytes),
+            usagePercent: row.memory_percent,
+            swapTotalBytes: row.swap_total_bytes,
+            swapUsedBytes: row.swap_used_bytes,
+            swapUsagePercent: row.swap_total_bytes > 0 ? Math.round((row.swap_used_bytes / row.swap_total_bytes) * 100) : 0
+          },
+          disk: {
+            totalBytes: row.disk_total_bytes,
+            usedBytes: row.disk_used_bytes,
+            availableBytes: Math.max(0, row.disk_total_bytes - row.disk_used_bytes),
+            usagePercent: row.disk_percent,
+            readBytesSec: row.disk_read_bytes_sec,
+            writeBytesSec: row.disk_write_bytes_sec,
+            iops: row.iops,
+            mounts: [{ fs: '/dev/root', type: 'ext4', size: row.disk_total_bytes, used: row.disk_used_bytes, available: row.disk_total_bytes - row.disk_used_bytes, usePercent: row.disk_percent, mount: '/' }]
+          },
+          network: {
+            rxBytesSec: row.net_rx_bytes_sec,
+            txBytesSec: row.net_tx_bytes_sec,
+            totalRxBytes: 0,
+            totalTxBytes: 0,
+            interfaces: []
+          },
+          system: {
+            uptimeSeconds: row.uptime_seconds,
+            processCount: row.process_count,
+            hostname: `Servidor #${serverId}`,
+            platform: 'linux',
+            distro: 'Linux Remoto',
+            kernel: '6.x',
+            arch: 'x86_64'
+          }
+        };
+      }
+
+      return {
+        timestamp: Date.now(),
+        cpu: { usagePercent: 0, userPercent: 0, systemPercent: 0, cores: 2, model: 'Aguardando Agente', speed: 2.4, load1m: 0, load5m: 0, load15m: 0, temperature: null },
+        memory: { totalBytes: 4 * 1024**3, usedBytes: 0, freeBytes: 4 * 1024**3, availableBytes: 4 * 1024**3, usagePercent: 0, swapTotalBytes: 0, swapUsedBytes: 0, swapUsagePercent: 0 },
+        disk: { totalBytes: 50 * 1024**3, usedBytes: 0, availableBytes: 50 * 1024**3, usagePercent: 0, readBytesSec: 0, writeBytesSec: 0, iops: 0, mounts: [] },
+        network: { rxBytesSec: 0, txBytesSec: 0, totalRxBytes: 0, totalTxBytes: 0, interfaces: [] },
+        system: { uptimeSeconds: 0, processCount: 0, hostname: `Servidor #${serverId}`, platform: 'linux', distro: 'Aguardando Agente...', kernel: 'Linux', arch: 'x86_64' }
+      };
+    }
+
     const now = Date.now();
     if (!force && cachedMetrics && (now - lastCollectTimestamp) < CACHE_TTL_MS) {
       return cachedMetrics;
@@ -255,16 +328,16 @@ export class MetricsService {
     return metrics;
   }
 
-  static saveRawMetrics(metrics: SystemMetrics): void {
+  static saveRawMetrics(metrics: SystemMetrics, serverId = 1): void {
     try {
       const stmt = db.prepare(`
         INSERT INTO metrics_raw (
-          timestamp, cpu_percent, memory_used_bytes, memory_total_bytes, memory_percent,
+          server_id, timestamp, cpu_percent, memory_used_bytes, memory_total_bytes, memory_percent,
           swap_used_bytes, swap_total_bytes, disk_used_bytes, disk_total_bytes, disk_percent,
           disk_read_bytes_sec, disk_write_bytes_sec, iops, net_rx_bytes_sec, net_tx_bytes_sec,
           load_1m, load_5m, load_15m, uptime_seconds, process_count, extra_json
         ) VALUES (
-          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?
@@ -272,6 +345,7 @@ export class MetricsService {
       `);
 
       stmt.run(
+        serverId,
         metrics.timestamp,
         metrics.cpu.usagePercent,
         metrics.memory.usedBytes,
@@ -302,7 +376,7 @@ export class MetricsService {
     }
   }
 
-  static getHistory(range: '1h' | '6h' | '24h' | '7d' | '30d'): any[] {
+  static getHistory(range: '1h' | '6h' | '24h' | '7d' | '30d', serverId = 1): any[] {
     const now = Date.now();
     let startTime = now;
     let stepMs = 10000; // 10s
@@ -330,7 +404,7 @@ export class MetricsService {
         break;
     }
 
-    // Query aggregated or raw metrics depending on range
+    // Query aggregated or raw metrics for this specific server
     const rows = db.prepare(`
       SELECT 
         (timestamp / ?) * ? as bucket_time,
@@ -344,10 +418,10 @@ export class MetricsService {
         AVG(net_tx_bytes_sec) as net_tx_sec,
         AVG(load_1m) as load_1m
       FROM metrics_raw
-      WHERE timestamp >= ?
+      WHERE timestamp >= ? AND server_id = ?
       GROUP BY bucket_time
       ORDER BY bucket_time ASC
-    `).all(stepMs, stepMs, startTime) as Array<{
+    `).all(stepMs, stepMs, startTime, serverId) as Array<{
       bucket_time: number;
       cpu: number;
       memory: number;
@@ -374,8 +448,8 @@ export class MetricsService {
     }));
   }
 
-  static getStatsSummary(range: '1h' | '6h' | '24h' | '7d' | '30d') {
-    const history = this.getHistory(range);
+  static getStatsSummary(range: '1h' | '6h' | '24h' | '7d' | '30d', serverId = 1) {
+    const history = this.getHistory(range, serverId);
     if (history.length === 0) {
       return {
         cpu: { min: 0, max: 0, avg: 0, current: 0 },

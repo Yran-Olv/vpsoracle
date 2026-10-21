@@ -1,8 +1,38 @@
 export interface User {
   id: number;
   username: string;
-  role: string;
+  role: 'admin' | 'operator' | 'viewer' | string;
+  email?: string;
+  status?: 'active' | 'disabled';
   created_at?: string;
+}
+
+export interface ServerItem {
+  id: number;
+  name: string;
+  hostname?: string;
+  ip_address: string;
+  port: number;
+  provider: 'oracle' | 'generic' | 'aws' | 'hetzner' | 'digitalocean' | 'other';
+  environment: 'production' | 'staging' | 'backup' | 'development';
+  connection_type: 'local' | 'agent' | 'ssh';
+  status: 'active' | 'disabled' | 'pending';
+  is_default: number | boolean;
+  os_info?: string;
+  agent_version?: string;
+  last_seen_at?: string;
+  notes?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface UserItem {
+  id: number;
+  username: string;
+  role: 'admin' | 'operator' | 'viewer';
+  status: 'active' | 'disabled';
+  created_at?: string;
+  last_login?: string;
 }
 
 export interface SystemMetrics {

@@ -36,7 +36,7 @@ export interface CheckupReport {
 }
 
 export class CheckupService {
-  static async runFullCheckup(): Promise<CheckupReport> {
+  static async runFullCheckup(serverId = 1): Promise<CheckupReport> {
     const checks: CheckupItem[] = [];
 
     const [
@@ -48,10 +48,10 @@ export class CheckupService {
       billing,
       rules
     ] = await Promise.all([
-      MetricsService.collectMetrics(),
+      MetricsService.collectMetrics(false, serverId),
       OracleGuardService.evaluateGuard(),
-      DockerService.getContainers(),
-      ServicesService.getServicesStatus(),
+      DockerService.getContainers(serverId),
+      ServicesService.getServicesStatus(serverId),
       DomainsService.checkAllDomains().catch(() => []),
       BillingService.getBillingReport(),
       OracleRulesService.getRules()
@@ -451,11 +451,12 @@ export class CheckupService {
     // Save report to database
     const insertStmt = db.prepare(`
       INSERT INTO checkup_reports (
-        score, status, ok_count, warning_count, critical_count, report_data_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        server_id, score, status, ok_count, warning_count, critical_count, report_data_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const res = insertStmt.run(
+      serverId,
       score,
       overallStatus,
       okCount,
@@ -479,8 +480,8 @@ export class CheckupService {
     };
   }
 
-  static getLatestReport(): CheckupReport | null {
-    const row = db.prepare('SELECT * FROM checkup_reports ORDER BY id DESC LIMIT 1').get() as any;
+  static getLatestReport(serverId = 1): CheckupReport | null {
+    const row = db.prepare('SELECT * FROM checkup_reports WHERE server_id = ? ORDER BY id DESC LIMIT 1').get(serverId) as any;
     if (!row) return null;
 
     return {

@@ -9,9 +9,17 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 
 const router = Router();
 
+import { ServersService } from '../services/servers.service';
+
 // Oracle Instance Real Metadata (IMDS v2)
 router.get('/instance', authMiddleware, async (req, res) => {
   try {
+    const serverId = parseInt(req.query.serverId as string || '1', 10);
+    const server = ServersService.getServerById(serverId);
+    if (server && server.provider !== 'oracle') {
+      return res.status(400).json({ error: `O servidor #${serverId} (${server.name}) é do provedor "${server.provider}". O IMDS só está disponível em instâncias Oracle Cloud.` });
+    }
+
     const metadata = await OciService.getInstanceMetadata();
     return res.json(metadata);
   } catch (err: any) {
@@ -22,8 +30,23 @@ router.get('/instance', authMiddleware, async (req, res) => {
 // Oracle Free Guard
 router.get('/free-tier', authMiddleware, async (req, res) => {
   try {
+    const serverId = parseInt(req.query.serverId as string || '1', 10);
+    const server = ServersService.getServerById(serverId);
+
+    if (server && server.provider !== 'oracle') {
+      return res.json({
+        isEligible: false,
+        overallStatus: 'SEGURO',
+        overallStatusBadge: '⚪ Provedor Não-Oracle',
+        overallScore: 100,
+        resources: [],
+        message: `Este servidor (${server.name}) é do tipo "${server.provider}". As cotas e limites Always Free do Oracle Free Guard aplicam-se exclusivamente a instâncias Oracle Cloud.`,
+        lastEvaluatedAt: new Date().toISOString()
+      });
+    }
+
     const report = await OracleGuardService.evaluateGuard();
-    return res.json(report);
+    return res.json({ ...report, isEligible: true });
   } catch (err: any) {
     return res.status(500).json({ error: 'Erro ao avaliar Oracle Free Guard', details: err.message });
   }

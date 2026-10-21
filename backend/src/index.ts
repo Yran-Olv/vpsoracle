@@ -33,24 +33,27 @@ app.use('/api', apiLimiter);
 // Mount API routes
 app.use('/api', apiRouter);
 
-// Server-Sent Events (SSE) for Realtime Dashboard Streaming (Protected with JWT)
+// Server-Sent Events (SSE) for Realtime Dashboard Streaming (Protected with JWT & supports serverId)
 app.get('/events', authMiddleware, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
+  const serverIdParam = req.query.serverId ? String(req.query.serverId) : '1';
+  const serverId = parseInt(serverIdParam, 10) || 1;
+
   // Send initial metrics immediately
   try {
-    const initialMetrics = await MetricsService.collectMetrics();
-    res.write(`data: ${JSON.stringify({ type: 'metrics', data: initialMetrics })}\n\n`);
+    const initialMetrics = await MetricsService.collectMetrics(false, serverId);
+    res.write(`data: ${JSON.stringify({ type: 'metrics', serverId, data: initialMetrics })}\n\n`);
   } catch (err) {}
 
   // Stream metrics every 5 seconds
   const intervalId = setInterval(async () => {
     try {
-      const metrics = await MetricsService.collectMetrics();
-      res.write(`data: ${JSON.stringify({ type: 'metrics', data: metrics })}\n\n`);
+      const metrics = await MetricsService.collectMetrics(false, serverId);
+      res.write(`data: ${JSON.stringify({ type: 'metrics', serverId, data: metrics })}\n\n`);
     } catch (e) {}
   }, 5000);
 

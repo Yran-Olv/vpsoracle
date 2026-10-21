@@ -7,15 +7,20 @@ export interface UserRow {
   id: number;
   username: string;
   password_hash: string;
-  role: string;
+  role: string; // 'admin' | 'operator' | 'viewer'
+  status?: string; // 'active' | 'disabled'
   created_at: string;
   updated_at: string;
 }
 
 export class AuthService {
-  static async login(username: string, passwordPlain: string): Promise<{ token: string; user: { id: number; username: string; role: string } } | null> {
+  static async login(username: string, passwordPlain: string): Promise<{ token: string; user: { id: number; username: string; role: string; status: string } } | null> {
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as UserRow | undefined;
     if (!user) {
+      return null;
+    }
+
+    if (user.status === 'disabled') {
       return null;
     }
 
@@ -35,7 +40,8 @@ export class AuthService {
       user: {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        status: user.status || 'active'
       }
     };
   }

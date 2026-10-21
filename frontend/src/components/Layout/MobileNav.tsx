@@ -2,24 +2,24 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
-  ShieldAlert, 
   Server, 
+  ShieldAlert, 
+  HardDrive, 
   Container, 
   Layers,
   Globe, 
-  Newspaper, 
   ShieldCheck, 
   Settings 
 } from 'lucide-react';
 
 const MOBILE_NAV_ITEMS = [
   { path: '/dashboard', label: 'Início', icon: LayoutDashboard },
+  { path: '/servers', label: 'Servidores', icon: Server },
   { path: '/oracle', label: 'Free Guard', icon: ShieldAlert },
-  { path: '/server', label: 'Servidor', icon: Server },
+  { path: '/server', label: 'Métricas', icon: HardDrive },
   { path: '/docker', label: 'Docker', icon: Container },
   { path: '/services', label: 'Serviços', icon: Layers },
   { path: '/domains', label: 'Domínios', icon: Globe },
-  { path: '/news', label: 'Notícias', icon: Newspaper },
   { path: '/checkup', label: 'Checkup', icon: ShieldCheck },
   { path: '/settings', label: 'Ajustes', icon: Settings },
 ];
